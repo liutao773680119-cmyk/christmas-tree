@@ -1,8 +1,12 @@
 import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
+// 其他不需要动...
 
-// https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [react()],
-  base: '/christmas-tree/',
+  // 👇 加上这一行！这是关键！
+  // 告诉代码：别去根目录找，去 christmas-tree 这个目录下找
+  base: '/christmas-tree/', 
+
+  plugins: [
+    // ... 原有的插件配置不用动
+  ],
 })
