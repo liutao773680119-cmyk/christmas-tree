@@ -16,7 +16,7 @@ import { MathUtils } from 'three';
 import * as random from 'maath/random';
 import { GestureRecognizer, FilesetResolver, DrawingUtils } from "@mediapipe/tasks-vision";
 
-// --- 【修复1】添加 TypeScript 类型声明，解决 foliageMaterial 报错 ---
+// --- 修复 TypeScript 类型报错 ---
 declare module '@react-three/fiber' {
   interface ThreeElements {
     foliageMaterial: any;
@@ -92,7 +92,7 @@ const PhotoOrnaments = ({ state, selectedIndex, onSelect }: { state: 'CHAOS' | '
     const time = stateObj.clock.elapsedTime;
     const camera = stateObj.camera;
     
-    // 优化目标点计算：相机前方延伸并抬高
+    // 目标点计算
     const cameraTargetPos = new THREE.Vector3();
     camera.getWorldDirection(cameraTargetPos); 
     cameraTargetPos.multiplyScalar(15); 
@@ -133,7 +133,7 @@ const PhotoOrnaments = ({ state, selectedIndex, onSelect }: { state: 'CHAOS' | '
   );
 };
 
-// --- Component: Christmas Elements & Lights & Star ---
+// --- Christmas Elements & Lights (保持不变) ---
 const ChristmasElements = ({ state }: { state: 'CHAOS' | 'FORMED' }) => { const count = CONFIG.counts.elements; const groupRef = useRef<THREE.Group>(null); const boxGeometry = useMemo(() => new THREE.BoxGeometry(0.8, 0.8, 0.8), []); const sphereGeometry = useMemo(() => new THREE.SphereGeometry(0.5, 16, 16), []); const caneGeometry = useMemo(() => new THREE.CylinderGeometry(0.15, 0.15, 1.2, 8), []); const data = useMemo(() => { return new Array(count).fill(0).map(() => { const chaosPos = new THREE.Vector3((Math.random()-0.5)*60, (Math.random()-0.5)*60, (Math.random()-0.5)*60); const h = CONFIG.tree.height; const y = (Math.random() * h) - (h / 2); const rBase = CONFIG.tree.radius; const currentRadius = (rBase * (1 - (y + (h/2)) / h)) * 0.95; const theta = Math.random() * Math.PI * 2; const targetPos = new THREE.Vector3(currentRadius * Math.cos(theta), y, currentRadius * Math.sin(theta)); const type = Math.floor(Math.random() * 3); let color; let scale = 1; if (type === 0) { color = CONFIG.colors.giftColors[Math.floor(Math.random() * CONFIG.colors.giftColors.length)]; scale = 0.8 + Math.random() * 0.4; } else if (type === 1) { color = CONFIG.colors.giftColors[Math.floor(Math.random() * CONFIG.colors.giftColors.length)]; scale = 0.6 + Math.random() * 0.4; } else { color = Math.random() > 0.5 ? CONFIG.colors.red : CONFIG.colors.white; scale = 0.7 + Math.random() * 0.3; } const rotationSpeed = { x: (Math.random()-0.5)*2.0, y: (Math.random()-0.5)*2.0, z: (Math.random()-0.5)*2.0 }; return { type, chaosPos, targetPos, color, scale, currentPos: chaosPos.clone(), chaosRotation: new THREE.Euler(Math.random()*Math.PI, Math.random()*Math.PI, Math.random()*Math.PI), rotationSpeed }; }); }, [boxGeometry, sphereGeometry, caneGeometry]); useFrame((_, delta) => { if (!groupRef.current) return; const isFormed = state === 'FORMED'; groupRef.current.children.forEach((child, i) => { const mesh = child as THREE.Mesh; const objData = data[i]; const target = isFormed ? objData.targetPos : objData.chaosPos; objData.currentPos.lerp(target, delta * 1.5); mesh.position.copy(objData.currentPos); mesh.rotation.x += delta * objData.rotationSpeed.x; mesh.rotation.y += delta * objData.rotationSpeed.y; mesh.rotation.z += delta * objData.rotationSpeed.z; }); }); return ( <group ref={groupRef}> {data.map((obj, i) => { let geometry; if (obj.type === 0) geometry = boxGeometry; else if (obj.type === 1) geometry = sphereGeometry; else geometry = caneGeometry; return ( <mesh key={i} scale={[obj.scale, obj.scale, obj.scale]} geometry={geometry} rotation={obj.chaosRotation}> <meshStandardMaterial color={obj.color} roughness={0.3} metalness={0.4} emissive={obj.color} emissiveIntensity={0.2} /> </mesh> )})} </group> );};
 const FairyLights = ({ state }: { state: 'CHAOS' | 'FORMED' }) => { const count = CONFIG.counts.lights; const groupRef = useRef<THREE.Group>(null); const geometry = useMemo(() => new THREE.SphereGeometry(0.8, 8, 8), []); const data = useMemo(() => { return new Array(count).fill(0).map(() => { const chaosPos = new THREE.Vector3((Math.random()-0.5)*60, (Math.random()-0.5)*60, (Math.random()-0.5)*60); const h = CONFIG.tree.height; const y = (Math.random() * h) - (h / 2); const rBase = CONFIG.tree.radius; const currentRadius = (rBase * (1 - (y + (h/2)) / h)) + 0.3; const theta = Math.random() * Math.PI * 2; const targetPos = new THREE.Vector3(currentRadius * Math.cos(theta), y, currentRadius * Math.sin(theta)); const color = CONFIG.colors.lights[Math.floor(Math.random() * CONFIG.colors.lights.length)]; const speed = 2 + Math.random() * 3; return { chaosPos, targetPos, color, speed, currentPos: chaosPos.clone(), timeOffset: Math.random() * 100 }; }); }, []); useFrame((stateObj, delta) => { if (!groupRef.current) return; const isFormed = state === 'FORMED'; const time = stateObj.clock.elapsedTime; groupRef.current.children.forEach((child, i) => { const objData = data[i]; const target = isFormed ? objData.targetPos : objData.chaosPos; objData.currentPos.lerp(target, delta * 2.0); const mesh = child as THREE.Mesh; mesh.position.copy(objData.currentPos); const intensity = (Math.sin(time * objData.speed + objData.timeOffset) + 1) / 2; if (mesh.material) { (mesh.material as THREE.MeshStandardMaterial).emissiveIntensity = isFormed ? 3 + intensity * 4 : 0; } }); }); return ( <group ref={groupRef}> {data.map((obj, i) => ( <mesh key={i} scale={[0.15, 0.15, 0.15]} geometry={geometry}> <meshStandardMaterial color={obj.color} emissive={obj.color} emissiveIntensity={0} toneMapped={false} /> </mesh> ))} </group> );};
 const TopStar = ({ state }: { state: 'CHAOS' | 'FORMED' }) => { const groupRef = useRef<THREE.Group>(null); const starShape = useMemo(() => { const shape = new THREE.Shape(); const outerRadius = 1.3; const innerRadius = 0.7; const points = 5; for (let i = 0; i < points * 2; i++) { const radius = i % 2 === 0 ? outerRadius : innerRadius; const angle = (i / (points * 2)) * Math.PI * 2 - Math.PI / 2; i === 0 ? shape.moveTo(radius*Math.cos(angle), radius*Math.sin(angle)) : shape.lineTo(radius*Math.cos(angle), radius*Math.sin(angle)); } shape.closePath(); return shape; }, []); const starGeometry = useMemo(() => { return new THREE.ExtrudeGeometry(starShape, { depth: 0.4, bevelEnabled: true, bevelThickness: 0.1, bevelSize: 0.1, bevelSegments: 3, }); }, [starShape]); const goldMaterial = useMemo(() => new THREE.MeshStandardMaterial({ color: CONFIG.colors.gold, emissive: CONFIG.colors.gold, emissiveIntensity: 1.5, roughness: 0.1, metalness: 1.0, }), []); useFrame((_, delta) => { if (groupRef.current) { groupRef.current.rotation.y += delta * 0.5; const targetScale = state === 'FORMED' ? 1 : 0; groupRef.current.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), delta * 3); } }); return ( <group ref={groupRef} position={[0, CONFIG.tree.height / 2 + 1.8, 0]}> <Float speed={2} rotationIntensity={0.2} floatIntensity={0.2}> <mesh geometry={starGeometry} material={goldMaterial} /> </Float> </group> );};
@@ -173,7 +173,6 @@ const Experience = ({ sceneState, rotationSpeed, selectedIndex, setSelectedIndex
         <Sparkles count={600} scale={50} size={8} speed={0.4} opacity={0.4} color={CONFIG.colors.silver} />
       </group>
       
-      {/* 【修复2】重写 EffectComposer，避免 JSX 子元素包含空白文本导致的类型错误 */}
       <EffectComposer>
         <Bloom luminanceThreshold={0.8} luminanceSmoothing={0.1} intensity={1.5} radius={0.5} mipmapBlur />
         <Vignette eskil={false} offset={0.1} darkness={1.2} />
@@ -182,11 +181,13 @@ const Experience = ({ sceneState, rotationSpeed, selectedIndex, setSelectedIndex
   );
 };
 
-// --- Gesture Controller ---
+// --- Gesture Controller (性能优化版：限制检测频率) ---
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const GestureController = ({ onGestureDetection, onMove, onStatus, debugMode }: any) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const lastVideoTime = useRef(-1);
+  const lastPredictionTime = useRef(0);
 
   useEffect(() => {
     let gestureRecognizer: GestureRecognizer;
@@ -218,9 +219,20 @@ const GestureController = ({ onGestureDetection, onMove, onStatus, debugMode }: 
 
     const predictWebcam = () => {
       if (gestureRecognizer && videoRef.current && canvasRef.current) {
-        if (videoRef.current.videoWidth > 0) {
-            const results = gestureRecognizer.recognizeForVideo(videoRef.current, Date.now());
+        // 【优化】限制检测频率：每200ms检测一次 (即每秒5帧)，防止卡顿
+        const now = Date.now();
+        if (now - lastPredictionTime.current < 200) {
+          requestRef = requestAnimationFrame(predictWebcam);
+          return;
+        }
+        lastPredictionTime.current = now;
+
+        if (videoRef.current.videoWidth > 0 && videoRef.current.currentTime !== lastVideoTime.current) {
+            lastVideoTime.current = videoRef.current.currentTime;
+            const results = gestureRecognizer.recognizeForVideo(videoRef.current, now);
             const ctx = canvasRef.current.getContext("2d");
+            
+            // 绘制逻辑
             if (ctx && debugMode) {
                 ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
                 canvasRef.current.width = videoRef.current.videoWidth; canvasRef.current.height = videoRef.current.videoHeight;
@@ -231,10 +243,10 @@ const GestureController = ({ onGestureDetection, onMove, onStatus, debugMode }: 
                 }
             } else if (ctx && !debugMode) ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
 
+            // 识别结果处理
             if (results.gestures.length > 0) {
               const name = results.gestures[0][0].categoryName;
               onGestureDetection(name);
-
               if (results.landmarks.length > 0) {
                 const speed = (0.5 - results.landmarks[0][0].x) * 0.15;
                 onMove(Math.abs(speed) > 0.01 ? speed : 0);
@@ -288,7 +300,8 @@ export default function GrandTreeApp() {
   return (
     <div style={{ width: '100vw', height: '100vh', backgroundColor: '#000', position: 'relative', overflow: 'hidden' }}>
       <div style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0, zIndex: 1 }}>
-        <Canvas dpr={[1, 2]} gl={{ toneMapping: THREE.ReinhardToneMapping }} shadows>
+        {/* 【优化】移除 shadows 属性，降低 dpr 最大值以提升流畅度 */}
+        <Canvas dpr={[1, 1.5]} gl={{ toneMapping: THREE.ReinhardToneMapping }}>
             <Experience 
                 sceneState={sceneState} 
                 rotationSpeed={rotationSpeed}
