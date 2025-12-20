@@ -18,7 +18,6 @@ import { GestureRecognizer, FilesetResolver, DrawingUtils } from "@mediapipe/tas
 
 // --- 动态生成照片列表 (top.jpg + 1.jpg 到 31.jpg) ---
 const TOTAL_NUMBERED_PHOTOS = 31;
-// 修改：将 top.jpg 加入到数组开头
 const bodyPhotoPaths = [
   './photos/top.jpg',
   ...Array.from({ length: TOTAL_NUMBERED_PHOTOS }, (_, i) => `./photos/${i + 1}.jpg`)
@@ -49,7 +48,6 @@ const CONFIG = {
   },
   tree: { height: 22, radius: 9 }, // 树体尺寸
   photos: {
-    // top 属性不再需要，因为已经移入 body
     body: bodyPhotoPaths
   }
 };
@@ -123,8 +121,8 @@ const Foliage = ({ state }: { state: 'CHAOS' | 'FORMED' }) => {
   );
 };
 
-// --- Component: Photo Ornaments (Double-Sided Polaroid) ---
-const PhotoOrnaments = ({ state }: { state: 'CHAOS' | 'FORMED' }) => {
+// --- Component: Photo Ornaments (Modified with Click Interaction) ---
+const PhotoOrnaments = ({ state, selectedIndex, onSelect }: { state: 'CHAOS' | 'FORMED', selectedIndex: number | null, onSelect: (i: number | null) => void }) => {
   const textures = useTexture(CONFIG.photos.body);
   const count = CONFIG.counts.ornaments;
   const groupRef = useRef<THREE.Group>(null);
@@ -170,27 +168,58 @@ const PhotoOrnaments = ({ state }: { state: 'CHAOS' | 'FORMED' }) => {
     if (!groupRef.current) return;
     const isFormed = state === 'FORMED';
     const time = stateObj.clock.elapsedTime;
+    const camera = stateObj.camera;
+    
+    // 计算摄像机正前方位置 (用于选中放大)
+    const forward = new THREE.Vector3(0, 0, -1);
+    forward.applyQuaternion(camera.quaternion);
+    const cameraTargetPos = camera.position.clone().add(forward.multiplyScalar(15)); // 距离相机15单位
 
     groupRef.current.children.forEach((group, i) => {
       const objData = data[i];
-      const target = isFormed ? objData.targetPos : objData.chaosPos;
+      const isSelected = i === selectedIndex;
 
-      objData.currentPos.lerp(target, delta * (isFormed ? 0.8 * objData.weight : 0.5));
+      // 1. 目标位置计算
+      let target;
+      if (isSelected) {
+         target = cameraTargetPos;
+      } else {
+         target = isFormed ? objData.targetPos : objData.chaosPos;
+      }
+
+      // 2. 位置插值
+      const lerpSpeed = isSelected ? 4.0 : (isFormed ? 0.8 * objData.weight : 0.5);
+      objData.currentPos.lerp(target, delta * lerpSpeed);
       group.position.copy(objData.currentPos);
 
-      if (isFormed) {
-         const targetLookPos = new THREE.Vector3(group.position.x * 2, group.position.y + 0.5, group.position.z * 2);
-         group.lookAt(targetLookPos);
-
-         const wobbleX = Math.sin(time * objData.wobbleSpeed + objData.wobbleOffset) * 0.05;
-         const wobbleZ = Math.cos(time * objData.wobbleSpeed * 0.8 + objData.wobbleOffset) * 0.05;
-         group.rotation.x += wobbleX;
-         group.rotation.z += wobbleZ;
-
+      // 3. 旋转和缩放
+      if (isSelected) {
+        // 选中时：始终面朝摄像机
+        group.lookAt(camera.position);
+        
+        // 放大动画
+        const currentScale = group.scale.x;
+        const targetScale = 5.0; // 放大倍数
+        const newScale = MathUtils.lerp(currentScale, targetScale, delta * 3);
+        group.scale.set(newScale, newScale, newScale);
       } else {
-         group.rotation.x += delta * objData.rotationSpeed.x;
-         group.rotation.y += delta * objData.rotationSpeed.y;
-         group.rotation.z += delta * objData.rotationSpeed.z;
+        // 未选中时：恢复原来的旋转和大小
+        const targetScale = objData.scale;
+        group.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), delta * 2);
+
+        if (isFormed) {
+          const targetLookPos = new THREE.Vector3(group.position.x * 2, group.position.y + 0.5, group.position.z * 2);
+          group.lookAt(targetLookPos);
+
+          const wobbleX = Math.sin(time * objData.wobbleSpeed + objData.wobbleOffset) * 0.05;
+          const wobbleZ = Math.cos(time * objData.wobbleSpeed * 0.8 + objData.wobbleOffset) * 0.05;
+          group.rotation.x += wobbleX;
+          group.rotation.z += wobbleZ;
+        } else {
+          group.rotation.x += delta * objData.rotationSpeed.x;
+          group.rotation.y += delta * objData.rotationSpeed.y;
+          group.rotation.z += delta * objData.rotationSpeed.z;
+        }
       }
     });
   });
@@ -198,14 +227,26 @@ const PhotoOrnaments = ({ state }: { state: 'CHAOS' | 'FORMED' }) => {
   return (
     <group ref={groupRef}>
       {data.map((obj, i) => (
-        <group key={i} scale={[obj.scale, obj.scale, obj.scale]} rotation={state === 'CHAOS' ? obj.chaosRotation : [0,0,0]}>
+        <group 
+          key={i} 
+          scale={[obj.scale, obj.scale, obj.scale]} 
+          rotation={state === 'CHAOS' ? obj.chaosRotation : [0,0,0]}
+          onClick={(e) => {
+            e.stopPropagation();
+            // 点击切换选中状态：如果已经选中当前这个，则取消；否则选中新的
+            onSelect(selectedIndex === i ? null : i);
+          }}
+          onPointerOver={() => document.body.style.cursor = 'pointer'}
+          onPointerOut={() => document.body.style.cursor = 'auto'}
+        >
           {/* 正面 */}
           <group position={[0, 0, 0.015]}>
             <mesh geometry={photoGeometry}>
               <meshStandardMaterial
                 map={textures[obj.textureIndex]}
                 roughness={0.5} metalness={0}
-                emissive={CONFIG.colors.white} emissiveMap={textures[obj.textureIndex]} emissiveIntensity={1.0}
+                emissive={CONFIG.colors.white} emissiveMap={textures[obj.textureIndex]} 
+                emissiveIntensity={selectedIndex === i ? 1.2 : 1.0}
                 side={THREE.FrontSide}
               />
             </mesh>
@@ -380,11 +421,21 @@ const TopStar = ({ state }: { state: 'CHAOS' | 'FORMED' }) => {
 };
 
 // --- Main Scene Experience ---
-const Experience = ({ sceneState, rotationSpeed }: { sceneState: 'CHAOS' | 'FORMED', rotationSpeed: number }) => {
+const Experience = ({ sceneState, rotationSpeed, selectedIndex, setSelectedIndex }: { sceneState: 'CHAOS' | 'FORMED', rotationSpeed: number, selectedIndex: number | null, setSelectedIndex: (i: number | null) => void }) => {
   const controlsRef = useRef<any>(null);
+  
   useFrame(() => {
     if (controlsRef.current) {
-      controlsRef.current.setAzimuthalAngle(controlsRef.current.getAzimuthalAngle() + rotationSpeed);
+      // 当有照片选中时，停止自动旋转，否则根据 rotationSpeed 或默认状态旋转
+      const isInteracting = selectedIndex !== null;
+      const autoRotate = !isInteracting && (rotationSpeed === 0 && sceneState === 'FORMED');
+      
+      controlsRef.current.autoRotate = autoRotate;
+      
+      // 手势控制的旋转优先
+      if (rotationSpeed !== 0 && !isInteracting) {
+          controlsRef.current.setAzimuthalAngle(controlsRef.current.getAzimuthalAngle() + rotationSpeed);
+      }
       controlsRef.current.update();
     }
   });
@@ -392,7 +443,22 @@ const Experience = ({ sceneState, rotationSpeed }: { sceneState: 'CHAOS' | 'FORM
   return (
     <>
       <PerspectiveCamera makeDefault position={[0, 8, 60]} fov={45} />
-      <OrbitControls ref={controlsRef} enablePan={false} enableZoom={true} minDistance={30} maxDistance={120} autoRotate={rotationSpeed === 0 && sceneState === 'FORMED'} autoRotateSpeed={0.3} maxPolarAngle={Math.PI / 1.7} />
+      
+      <OrbitControls 
+        ref={controlsRef} 
+        enablePan={false} 
+        enableZoom={true} 
+        minDistance={20} 
+        maxDistance={120} 
+        autoRotateSpeed={0.3} 
+        maxPolarAngle={Math.PI / 1.7} 
+      />
+
+      {/* 点击空白背景时，取消选中状态 */}
+      <mesh onPointerMissed={() => setSelectedIndex(null)} visible={false}>
+          <sphereGeometry args={[100, 4, 4]} />
+          <meshBasicMaterial />
+      </mesh>
 
       <color attach="background" args={['#000300']} />
       <Stars radius={100} depth={50} count={5000} factor={4} saturation={0} fade speed={1} />
@@ -406,7 +472,8 @@ const Experience = ({ sceneState, rotationSpeed }: { sceneState: 'CHAOS' | 'FORM
       <group position={[0, -6, 0]}>
         <Foliage state={sceneState} />
         <Suspense fallback={null}>
-           <PhotoOrnaments state={sceneState} />
+           {/* 将选中状态传递给照片组件 */}
+           <PhotoOrnaments state={sceneState} selectedIndex={selectedIndex} onSelect={setSelectedIndex} />
            <ChristmasElements state={sceneState} />
            <FairyLights state={sceneState} />
            <TopStar state={sceneState} />
@@ -509,12 +576,20 @@ export default function GrandTreeApp() {
   const [rotationSpeed, setRotationSpeed] = useState(0);
   const [aiStatus, setAiStatus] = useState("INITIALIZING...");
   const [debugMode, setDebugMode] = useState(false);
+  
+  // 新增：记录当前被选中（放大）的照片索引，null 表示没有选中
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
 
   return (
     <div style={{ width: '100vw', height: '100vh', backgroundColor: '#000', position: 'relative', overflow: 'hidden' }}>
       <div style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0, zIndex: 1 }}>
         <Canvas dpr={[1, 2]} gl={{ toneMapping: THREE.ReinhardToneMapping }} shadows>
-            <Experience sceneState={sceneState} rotationSpeed={rotationSpeed} />
+            <Experience 
+                sceneState={sceneState} 
+                rotationSpeed={rotationSpeed}
+                selectedIndex={selectedIndex}
+                setSelectedIndex={setSelectedIndex}
+            />
         </Canvas>
       </div>
       <GestureController onGesture={setSceneState} onMove={setRotationSpeed} onStatus={setAiStatus} debugMode={debugMode} />
@@ -534,6 +609,13 @@ export default function GrandTreeApp() {
           </p>
         </div>
       </div>
+
+      {/* 简单的交互提示文字 */}
+      {selectedIndex === null && (
+         <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', color: 'rgba(255,255,255,0.3)', pointerEvents: 'none', fontSize: '12px', letterSpacing: '1px', textShadow: '0 0 5px black' }}>
+            CLICK PHOTO TO VIEW
+         </div>
+      )}
 
       {/* UI - Buttons */}
       <div style={{ position: 'absolute', bottom: '30px', right: '40px', zIndex: 10, display: 'flex', gap: '10px' }}>
